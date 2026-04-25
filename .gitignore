@@ -1,3 +1,13 @@
+<<<<<<< HEAD
 
 CMakeFiles/
 CMakeCache.txt
+=======
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+code
+.build/
+*.o
+>>>>>>> 2f77dff (solution)

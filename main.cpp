@@ -22,6 +22,9 @@ struct Team {
     set<char> frozen_problems; // Problems that are frozen for this team
     bool has_started_competition = false;
     
+    // Default constructor
+    Team() {}
+    
     Team(const string& team_name) : name(team_name) {
         // Initialize incorrect attempts for all possible problems (A-Z)
         for (char c = 'A'; c <= 'Z'; ++c) {
@@ -39,6 +42,7 @@ int problem_count = 0;
 bool competition_started = false;
 bool scoreboard_frozen = false;
 set<string> frozen_teams; // Teams that have frozen problems
+map<string, vector<Submission>> submission_history; // Submission history for each team
 
 // Function to get problem ID from character
 char get_problem_id(int idx) {
@@ -91,20 +95,31 @@ void submit_problem(const string& problem_name, const string& team_name,
     Team& team = teams[team_name];
     char problem_id = problem_name[0];
     
+    // Record the submission in history
+    submission_history[team_name].push_back(Submission(problem_name, submit_status, time));
+    
     // If the problem is already solved, ignore further submissions
-    if (team.solve_time[problem_id] != -1) {
+    auto it = team.solve_time.find(problem_id);
+    if (it != team.solve_time.end() && it->second != -1) {
         return;
     }
     
     if (submit_status == "Accepted") {
         // Calculate penalty: 20 * incorrect attempts + time
-        int penalty = 20 * team.incorrect_attempts[problem_id] + time;
+        auto it_incorrect = team.incorrect_attempts.find(problem_id);
+        int incorrect_count = (it_incorrect != team.incorrect_attempts.end()) ? it_incorrect->second : 0;
+        int penalty = 20 * incorrect_count + time;
         team.solve_time[problem_id] = time;
         team.solved_count++;
         team.total_penalty += penalty;
     } else {
         // Increment incorrect attempts
         team.incorrect_attempts[problem_id]++;
+        
+        // If scoreboard is frozen, increment freeze submissions
+        if (scoreboard_frozen && team.frozen_problems.find(problem_id) != team.frozen_problems.end()) {
+            team.freeze_submissions[problem_id]++;
+        }
     }
 }
 
@@ -157,11 +172,14 @@ bool compare_teams(const string& team1_name, const string& team2_name) {
     vector<int> times1, times2;
     for (int i = 0; i < problem_count; ++i) {
         char problem_id = get_problem_id(i);
-        if (team1.solve_time[problem_id] != -1) {
-            times1.push_back(team1.solve_time[problem_id]);
+        // Check if the problem is solved (exists in solve_time map and value is not -1)
+        auto it1 = team1.solve_time.find(problem_id);
+        if (it1 != team1.solve_time.end() && it1->second != -1) {
+            times1.push_back(it1->second);
         }
-        if (team2.solve_time[problem_id] != -1) {
-            times2.push_back(team2.solve_time[problem_id]);
+        auto it2 = team2.solve_time.find(problem_id);
+        if (it2 != team2.solve_time.end() && it2->second != -1) {
+            times2.push_back(it2->second);
         }
     }
     
@@ -185,28 +203,37 @@ bool compare_teams(const string& team1_name, const string& team2_name) {
 string get_problem_status(const Team& team, char problem_id) {
     // If the problem is frozen
     if (team.frozen_problems.find(problem_id) != team.frozen_problems.end()) {
-        int before_freeze = team.incorrect_attempts[problem_id] - team.freeze_submissions[problem_id];
+        auto it_incorrect = team.incorrect_attempts.find(problem_id);
+        auto it_freeze = team.freeze_submissions.find(problem_id);
+        int incorrect_count = (it_incorrect != team.incorrect_attempts.end()) ? it_incorrect->second : 0;
+        int freeze_count = (it_freeze != team.freeze_submissions.end()) ? it_freeze->second : 0;
+        int before_freeze = incorrect_count - freeze_count;
         if (before_freeze == 0) {
-            return "0/" + to_string(team.freeze_submissions[problem_id]);
+            return "0/" + to_string(freeze_count);
         } else {
-            return "-" + to_string(before_freeze) + "/" + to_string(team.freeze_submissions[problem_id]);
+            return "-" + to_string(before_freeze) + "/" + to_string(freeze_count);
         }
     }
     
     // If the problem is solved
-    if (team.solve_time[problem_id] != -1) {
-        if (team.incorrect_attempts[problem_id] == 0) {
+    auto it_solve = team.solve_time.find(problem_id);
+    if (it_solve != team.solve_time.end() && it_solve->second != -1) {
+        auto it_incorrect = team.incorrect_attempts.find(problem_id);
+        int incorrect_count = (it_incorrect != team.incorrect_attempts.end()) ? it_incorrect->second : 0;
+        if (incorrect_count == 0) {
             return "+";
         } else {
-            return "+" + to_string(team.incorrect_attempts[problem_id]);
+            return "+" + to_string(incorrect_count);
         }
     }
     
     // If the problem is not solved and not frozen
-    if (team.incorrect_attempts[problem_id] == 0) {
+    auto it_incorrect = team.incorrect_attempts.find(problem_id);
+    int incorrect_count = (it_incorrect != team.incorrect_attempts.end()) ? it_incorrect->second : 0;
+    if (incorrect_count == 0) {
         return ".";
     } else {
-        return "-" + to_string(team.incorrect_attempts[problem_id]);
+        return "-" + to_string(incorrect_count);
     }
 }
 
@@ -374,6 +401,18 @@ void query_ranking(const string& team_name) {
     cout << team_name << " NOW AT RANKING " << ranking << endl;
 }
 
+// Structure to store submission history
+struct Submission {
+    string problem_name;
+    string status;
+    int time;
+    
+    Submission(const string& prob, const string& stat, int t) : problem_name(prob), status(stat), time(t) {}
+};
+
+// Global variable to store submission history for each team
+map<string, vector<Submission>> submission_history;
+
 // Function to query team submission
 void query_submission(const string& team_name, const string& problem_name, const string& status) {
     if (!team_exists(team_name)) {
@@ -383,9 +422,36 @@ void query_submission(const string& team_name, const string& problem_name, const
     
     cout << "[Info]Complete query submission." << endl;
     
-    // For now, we don't have storage of all submissions, so we can't implement this fully
-    // This would require storing all submission history
-    cout << "Cannot find any submission." << endl;
+    // Find the last submission that matches the criteria
+    string last_problem = problem_name;
+    string last_status = status;
+    
+    // If problem_name is "ALL", we match any problem
+    // If status is "ALL", we match any status
+    bool found = false;
+    Submission latest_submission("", "", -1);
+    
+    // Check if the team has any submission history
+    if (submission_history.find(team_name) != submission_history.end()) {
+        for (const auto& submission : submission_history[team_name]) {
+            bool problem_match = (last_problem == "ALL" || submission.problem_name == last_problem);
+            bool status_match = (last_status == "ALL" || submission.status == last_status);
+            
+            if (problem_match && status_match) {
+                if (!found || submission.time > latest_submission.time) {
+                    latest_submission = submission;
+                    found = true;
+                }
+            }
+        }
+    }
+    
+    if (!found) {
+        cout << "Cannot find any submission." << endl;
+    } else {
+        cout << team_name << " " << latest_submission.problem_name << " " 
+             << latest_submission.status << " " << latest_submission.time << endl;
+    }
 }
 
 // Function to end the competition

@@ -11,6 +11,15 @@
 
 using namespace std;
 
+// Structure to store submission history
+struct Submission {
+    string problem_name;
+    string status;
+    int time;
+    
+    Submission(const string& prob, const string& stat, int t) : problem_name(prob), status(stat), time(t) {}
+};
+
 // Structure to represent a team
 struct Team {
     string name;
@@ -400,18 +409,6 @@ void query_ranking(const string& team_name) {
     
     cout << team_name << " NOW AT RANKING " << ranking << endl;
 }
-
-// Structure to store submission history
-struct Submission {
-    string problem_name;
-    string status;
-    int time;
-    
-    Submission(const string& prob, const string& stat, int t) : problem_name(prob), status(stat), time(t) {}
-};
-
-// Global variable to store submission history for each team
-map<string, vector<Submission>> submission_history;
 
 // Function to query team submission
 void query_submission(const string& team_name, const string& problem_name, const string& status) {

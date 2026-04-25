@@ -201,14 +201,17 @@ int main(){
                 int id = name2id[team_name]; cout << teams[id].name << " NOW AT RANKING " << teams[id].last_rank << "\n";
             }
         } else if (cmd == "QUERY_SUBMISSION"){
-            string team_name; string WHERE; string PROBLEM_eq; string prob_name; string AND; string STATUS_eq; string st;
-            cin >> team_name >> WHERE >> PROBLEM_eq >> prob_name >> AND >> STATUS_eq >> st;
+            string team_name; string WHERE; string prob_tok; string AND; string status_tok;
+            cin >> team_name >> WHERE >> prob_tok >> AND >> status_tok;
             if (!name2id.count(team_name)){
                 cout << "[Error]Query submission failed: cannot find the team.\n";
             } else {
                 cout << "[Info]Complete query submission.\n";
                 int id = name2id[team_name];
-                int prob_filter = -1; if (prob_name != "ALL") prob_filter = prob_name[0]-'A';
+                auto get_val = [](const string &tok){ auto pos = tok.find('='); return pos==string::npos? string("") : tok.substr(pos+1); };
+                string prob_name = get_val(prob_tok);
+                string st = get_val(status_tok);
+                int prob_filter = -1; if (prob_name != "ALL" && !prob_name.empty()) prob_filter = prob_name[0]-'A';
                 string status_filter = st;
                 int found=-1;
                 for (int i=(int)subs_by_team[id].size()-1;i>=0;i--){ auto &s=subs_by_team[id][i]; if ((prob_filter==-1 || s.prob==prob_filter) && (status_filter=="ALL" || s.status_str==status_filter)){ found=i; break; } }
